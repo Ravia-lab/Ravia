@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from urllib.parse import urlparse, urlunparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from ravia_ki.database.discovery_database import DiscoveryDatabase
+
 
 # ---------------------------------------------------------
-# Hersteller- / Modell- / kW-Datenbank
+# Hersteller / Modelle / kW
 # ---------------------------------------------------------
 ALL_MANUFACTURERS = {
     "LG": {
@@ -62,6 +64,9 @@ ALL_MANUFACTURERS = {
 }
 
 
+# ---------------------------------------------------------
+# Ergebnis-Datenklasse
+# ---------------------------------------------------------
 @dataclass
 class DiscoveryResult:
     product_pages: list
@@ -73,6 +78,9 @@ class DiscoveryResult:
     zip_files: list
 
 
+# ---------------------------------------------------------
+# Discovery Engine
+# ---------------------------------------------------------
 class WebDiscovery:
     def __init__(self):
         self.session = requests.Session()
@@ -84,8 +92,11 @@ class WebDiscovery:
         self.search_cache = {}
         self.redirect_cache = {}
 
-    # ---------------- Hersteller / Modelle / kW ----------------
+        self.db = DiscoveryDatabase()
 
+    # ---------------------------------------------------------
+    # Hersteller / Modelle / kW
+    # ---------------------------------------------------------
     def get_manufacturers(self):
         return self.manufacturers
 
@@ -95,8 +106,9 @@ class WebDiscovery:
     def get_kw_for_model(self, manufacturer: str, model: str) -> list:
         return self.known_models.get(manufacturer, {}).get(model, [])
 
-    # ---------------- URL / Redirect / Caching ----------------
-
+    # ---------------------------------------------------------
+    # URL normalisieren
+    # ---------------------------------------------------------
     def normalize_url(self, url: str) -> str:
         try:
             parsed = urlparse(url)
@@ -105,6 +117,9 @@ class WebDiscovery:
         except:
             return url
 
+    # ---------------------------------------------------------
+    # Redirects + Cache
+    # ---------------------------------------------------------
     def resolve_redirect_single(self, url: str) -> str:
         if url in self.redirect_cache:
             return self.redirect_cache[url]
@@ -121,17 +136,17 @@ class WebDiscovery:
     def resolve_redirects_parallel(self, urls: list, max_workers: int = 10) -> list:
         resolved = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_map = {executor.submit(self.resolve_redirect_single, u): u for u in urls}
-            for future in as_completed(future_map):
+            futures = {executor.submit(self.resolve_redirect_single, u): u for u in urls}
+            for future in as_completed(futures):
                 try:
-                    real = future.result()
-                    resolved.append(real)
+                    resolved.append(future.result())
                 except:
                     pass
         return resolved
 
-    # ---------------- Suchmaschinen ----------------
-
+    # ---------------------------------------------------------
+    # Suchmaschinen
+    # ---------------------------------------------------------
     def search_bing(self, query: str) -> list:
         try:
             url = f"https://www.bing.com/search?q={query.replace(' ', '+')}"
@@ -210,8 +225,9 @@ class WebDiscovery:
         except:
             return []
 
-    # ---------------- Multi-Search mit Cache + Threading ----------------
-
+    # ---------------------------------------------------------
+    # Multi-Search + Cache + Threading
+    # ---------------------------------------------------------
     def search(self, query: str) -> list:
         if query in self.search_cache:
             return self.search_cache[query]
@@ -233,8 +249,7 @@ class WebDiscovery:
             futures = {executor.submit(func, query): func for func in search_funcs}
             for future in as_completed(futures):
                 try:
-                    result = future.result()
-                    urls.extend(result)
+                    urls.extend(future.result())
                 except:
                     pass
 
@@ -242,9 +257,11 @@ class WebDiscovery:
         self.search_cache[query] = urls
         return urls
 
-    # ---------------- Haupt-Discovery ----------------
-
+    # ---------------------------------------------------------
+    # Haupt-Discovery
+    # ---------------------------------------------------------
     def discover_device(self, manufacturer: str, model: str, kw: str, mode="all") -> DiscoveryResult:
+
         search_terms = [
             f"{manufacturer} {model} {kw} kW",
             f"{manufacturer} {model} {kw} kW PDF",
@@ -266,6 +283,21 @@ class WebDiscovery:
         zips = [u for u in all_urls if u.lower().endswith(".zip")]
         images = [u for u in all_urls if u.lower().endswith((".jpg", ".jpeg", ".png"))]
         html = [u for u in all_urls if not u.lower().endswith((".pdf", ".zip"))]
+
+        # ---------------------------------------------------------
+        # Ergebnisse in Datenbank speichern
+        # ---------------------------------------------------------
+        for u in html:
+            self.db.insert_result(manufacturer, model, kw, u, "html", "multi-search")
+
+        for u in pdfs:
+            self.db.insert_result(manufacturer, model, kw, u, "pdf", "multi-search")
+
+        for u in images:
+            self.db.insert_result(manufacturer, model, kw, u, "image", "multi-search")
+
+        for u in zips:
+            self.db.insert_result(manufacturer, model, kw, u, "zip", "multi-search")
 
         return DiscoveryResult(
             product_pages=html,
