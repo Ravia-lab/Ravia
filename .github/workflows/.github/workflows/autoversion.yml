@@ -3,7 +3,7 @@ name: RaVia Auto Versioning
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   autoversion:
