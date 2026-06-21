@@ -1,0 +1,30 @@
+name: RaVia Timestamp
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  timestamp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate timestamp
+        run: |
+          echo "Last update: $(date -u)" > timestamp.txt
+
+      - name: Commit timestamp
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add timestamp.txt
+          git commit -m "Auto Timestamp: $(date -u)" || echo "No changes to commit"
+
+      - name: Push changes
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}

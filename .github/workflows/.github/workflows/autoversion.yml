@@ -1,0 +1,52 @@
+name: RaVia Auto Versioning
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  autoversion:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read current version
+        id: read_version
+        run: |
+          if [ ! -f version.txt ]; then echo "0.1.0" > version.txt; fi
+          echo "version=$(cat version.txt)" >> $GITHUB_OUTPUT
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          OLD_VERSION="${{ steps.read_version.outputs.version }}"
+          IFS='.' read -r major minor patch <<< "$OLD_VERSION"
+          NEW_PATCH=$((patch + 1))
+          NEW_VERSION="$major.$minor.$NEW_PATCH"
+          echo "$NEW_VERSION" > version.txt
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit new version
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add version.txt
+          git commit -m "Auto Version: ${{ steps.bump.outputs.new_version }}" || echo "No changes to commit"
+
+      - name: Push changes
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.bump.outputs.new_version }}"
+          name: "RaVia v${{ steps.bump.outputs.new_version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
