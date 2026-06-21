@@ -3,7 +3,7 @@ name: RaVia Timestamp
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   timestamp:
