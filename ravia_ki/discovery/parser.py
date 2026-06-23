@@ -1,69 +1,99 @@
-import pdfplumber
-from bs4 import BeautifulSoup
+import logging
 from pathlib import Path
-import zipfile
+from typing import Optional
+
+import chardet
+
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
 
 class Parser:
+    def __init__(self, max_chars: int = 500_000):
+        self.max_chars = max_chars
+
     def parse(self, file_path: Path) -> str:
-        """
-        Erkennt automatisch den Dateityp und extrahiert Text.
-        """
         suffix = file_path.suffix.lower()
 
-        if suffix == ".pdf":
-            return self._parse_pdf(file_path)
-
-        if suffix in [".html", ".htm"]:
-            return self._parse_html(file_path)
-
-        if suffix == ".zip":
-            return self._parse_zip(file_path)
-
-        return ""  # Bilder etc. ignorieren wir erstmal
-
-    # -------------------------
-    # PDF
-    # -------------------------
-    def _parse_pdf(self, file_path: Path) -> str:
-        text = ""
         try:
-            with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text() or ""
-                    text += page_text + "\n"
+            if suffix == ".pdf":
+                return self._parse_pdf(file_path)
+            elif suffix in {".html", ".htm"}:
+                return self._parse_html(file_path)
+            elif suffix in {".txt", ""}:
+                return self._parse_text(file_path)
+            else:
+                # Fallback: erst Text, dann ggf. HTML-Heuristik
+                text = self._parse_text(file_path)
+                if text.strip():
+                    return text
+                return self._parse_html(file_path)
         except Exception as e:
-            print(f"[Parser] PDF Fehler: {file_path} -> {e}")
-        return text
-
-    # -------------------------
-    # HTML
-    # -------------------------
-    def _parse_html(self, file_path: Path) -> str:
-        try:
-            html = file_path.read_text(encoding="utf-8", errors="ignore")
-            soup = BeautifulSoup(html, "html.parser")
-            return soup.get_text(separator="\n")
-        except Exception as e:
-            print(f"[Parser] HTML Fehler: {file_path} -> {e}")
+            logging.error(f"[Parser] Fehler beim Parsen von {file_path}: {e}")
             return ""
 
-    # -------------------------
-    # ZIP
-    # -------------------------
-    def _parse_zip(self, file_path: Path) -> str:
-        text = ""
-        try:
-            with zipfile.ZipFile(file_path, "r") as zip_ref:
-                extract_dir = file_path.parent / (file_path.stem + "_unzipped")
-                extract_dir.mkdir(exist_ok=True)
-                zip_ref.extractall(extract_dir)
+    def _parse_pdf(self, file_path: Path) -> str:
+        if pdfplumber is None:
+            logging.error("[Parser] pdfplumber nicht installiert")
+            return ""
 
-                for inner_file in extract_dir.rglob("*"):
-                    if inner_file.suffix.lower() == ".pdf":
-                        text += self._parse_pdf(inner_file)
-                    elif inner_file.suffix.lower() in [".html", ".htm"]:
-                        text += self._parse_html(inner_file)
-        except Exception as e:
-            print(f"[Parser] ZIP Fehler: {file_path} -> {e}")
-        return text
+        text_chunks = []
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text() or ""
+                if page_text:
+                    text_chunks.append(page_text)
+                if sum(len(t) for t in text_chunks) > self.max_chars:
+                    break
+
+        text = "\n".join(text_chunks)
+        return text[: self.max_chars]
+
+    def _detect_encoding(self, data: bytes) -> Optional[str]:
+        try:
+            result = chardet.detect(data)
+            enc = result.get("encoding")
+            return enc or "utf-8"
+        except Exception:
+            return "utf-8"
+
+    def _parse_text(self, file_path: Path) -> str:
+        raw = file_path.read_bytes()
+        encoding = self._detect_encoding(raw)
+        try:
+            text = raw.decode(encoding, errors="replace")
+        except Exception:
+            text = raw.decode("utf-8", errors="replace")
+        return text[: self.max_chars]
+
+    def _parse_html(self, file_path: Path) -> str:
+        if BeautifulSoup is None:
+            logging.error("[Parser] BeautifulSoup (bs4) nicht installiert")
+            return ""
+
+        raw = file_path.read_bytes()
+        encoding = self._detect_encoding(raw)
+        try:
+            html = raw.decode(encoding, errors="replace")
+        except Exception:
+            html = raw.decode("utf-8", errors="replace")
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Skripte/Styles entfernen
+        for tag in soup(["script", "style", "noscript"]):
+            tag.decompose()
+
+        text = soup.get_text(separator="\n")
+        # Whitespace normalisieren
+        lines = [line.strip() for line in text.splitlines()]
+        text = "\n".join(line for line in lines if line)
+
+        return text[: self.max_chars]

@@ -11,24 +11,29 @@ class UnifiedProductDatabase:
         self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path)
         self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA synchronous = NORMAL")
         self._init_schema()
 
     def _init_schema(self):
         self.conn.executescript("""
         CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT NOT NULL,
+            url TEXT NOT NULL UNIQUE,
             file_type TEXT NOT NULL,
             local_path TEXT NOT NULL,
+            mime TEXT,
             status TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE INDEX IF NOT EXISTS idx_documents_url ON documents(url);
 
         CREATE TABLE IF NOT EXISTS raw_text (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             document_id INTEGER NOT NULL,
             text_content TEXT,
-            FOREIGN KEY (document_id) REFERENCES documents(id)
+            FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS extracted_data (
@@ -37,8 +42,10 @@ class UnifiedProductDatabase:
             key TEXT NOT NULL,
             value TEXT NOT NULL,
             confidence REAL NOT NULL,
-            FOREIGN KEY (document_id) REFERENCES documents(id)
+            FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
         );
+
+        CREATE INDEX IF NOT EXISTS idx_extracted_key ON extracted_data(key);
 
         CREATE TABLE IF NOT EXISTS product_master (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,21 +60,41 @@ class UnifiedProductDatabase:
             voltage TEXT,
             last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE INDEX IF NOT EXISTS idx_product_model ON product_master(model);
         """)
         self.conn.commit()
 
-    # -------------------------
-    # Dokumente & Rohtext
-    # -------------------------
+    # ---------------------------------------------------
+    # Dokumente
+    # ---------------------------------------------------
 
-    def save_document(self, url: str, file_type: str, local_path: Path, status: str = "downloaded") -> int:
+    def document_exists(self, url: str) -> bool:
+        cur = self.conn.cursor()
+        cur.execute("SELECT 1 FROM documents WHERE url = ?", (url,))
+        return cur.fetchone() is not None
+
+    def save_document(self, url: str, file_type: str, local_path: Path,
+                      status: str = "downloaded", mime: Optional[str] = None) -> int:
+
         cur = self.conn.cursor()
         cur.execute("""
-            INSERT INTO documents (url, file_type, local_path, status)
-            VALUES (?, ?, ?, ?)
-        """, (url, file_type, str(local_path), status))
+            INSERT INTO documents (url, file_type, local_path, status, mime)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(url) DO UPDATE SET
+                file_type = excluded.file_type,
+                local_path = excluded.local_path,
+                status = excluded.status,
+                mime = excluded.mime
+        """, (url, file_type, str(local_path), status, mime))
         self.conn.commit()
-        return cur.lastrowid
+
+        cur.execute("SELECT id FROM documents WHERE url = ?", (url,))
+        return cur.fetchone()[0]
+
+    # ---------------------------------------------------
+    # Rohtext
+    # ---------------------------------------------------
 
     def save_raw_text(self, document_id: int, text: str) -> int:
         cur = self.conn.cursor()
@@ -78,11 +105,19 @@ class UnifiedProductDatabase:
         self.conn.commit()
         return cur.lastrowid
 
-    # -------------------------
-    # Extrahierte Daten
-    # -------------------------
+    def get_raw_text(self, document_id: int) -> Optional[str]:
+        cur = self.conn.cursor()
+        cur.execute("SELECT text_content FROM raw_text WHERE document_id = ?", (document_id,))
+        row = cur.fetchone()
+        return row[0] if row else None
 
-    def save_extracted_data(self, document_id: int, key: str, value: str, confidence: float = 0.8) -> int:
+    # ---------------------------------------------------
+    # Extrahierte Daten
+    # ---------------------------------------------------
+
+    def save_extracted_data(self, document_id: int, key: str, value: str,
+                            confidence: float = 0.8) -> int:
+
         cur = self.conn.cursor()
         cur.execute("""
             INSERT INTO extracted_data (document_id, key, value, confidence)
@@ -100,27 +135,22 @@ class UnifiedProductDatabase:
             WHERE rt.text_content LIKE ?
         """, (f"%{model_hint}%",))
         rows = cur.fetchall()
-        return [
-            {"key": r[0], "value": r[1], "confidence": r[2]}
-            for r in rows
-        ]
+        return [{"key": r[0], "value": r[1], "confidence": r[2]} for r in rows]
 
-    # -------------------------
-    # Merger: aus vielen Daten → ein Produkt
-    # -------------------------
+    # ---------------------------------------------------
+    # Produkt-Merger
+    # ---------------------------------------------------
 
-    def merge_to_product_master(self, manufacturer: str, model: str, variant_hint: Optional[str] = None):
-        # Alle extrahierten Daten holen, die zum Modell passen
+    def merge_to_product_master(self, manufacturer: str, model: str,
+                                variant_hint: Optional[str] = None):
+
         extracted = self.get_extracted_for_model_hint(model)
 
         merged: Dict[str, Dict[str, Any]] = {}
         for item in extracted:
             key = item["key"]
-            value = item["value"]
-            conf = item["confidence"]
-
-            if key not in merged or conf > merged[key]["confidence"]:
-                merged[key] = {"value": value, "confidence": conf}
+            if key not in merged or item["confidence"] > merged[key]["confidence"]:
+                merged[key] = item
 
         def _get_float(k: str) -> Optional[float]:
             if k in merged:
@@ -157,9 +187,9 @@ class UnifiedProductDatabase:
         self.conn.commit()
         return cur.lastrowid
 
-    # -------------------------
-    # Produkt abfragen
-    # -------------------------
+    # ---------------------------------------------------
+    # Produkt-Abfrage
+    # ---------------------------------------------------
 
     def get_product(self, manufacturer: str, model: str) -> Optional[Dict[str, Any]]:
         cur = self.conn.cursor()

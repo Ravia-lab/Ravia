@@ -1,38 +1,30 @@
 import tkinter as tk
 from tkinter import ttk
 
-DEVICE_DATABASE = {
-    "Daikin": {
-        "Altherma 3 H HT": [8, 11, 14, 16],
-        "Altherma 3 R": [4, 6, 8],
-    },
-    "Panasonic": {
-        "Aquarea High Performance": [5, 7, 9, 12],
-        "Aquarea T-CAP": [9, 12, 16],
-    },
-    "LG": {
-        "Therma V R32": [5, 7, 9, 12],
-        "Therma V Monobloc": [5, 7, 9],
-    },
-    "Vaillant": {
-        "aroTHERM plus": [3, 5, 7, 10, 12],
-    }
-}
+from ravia_ki.discovery.manufacturer_profiles import MANUFACTURERS
+
+# Deine echte Geräte-Datenbank
+from ravia_ki.database.device_database import DEVICE_DATABASE
+
 
 
 class DiscoveryUI:
-    def __init__(self, root, on_start_callback):
+    def __init__(self, root, on_start_callback=None):
         self.root = root
         self.on_start_callback = on_start_callback
 
         self.root.title("RaVia – Discovery Modul")
+
+        # Hersteller-Namen aus MANUFACTURERS
+        self.manufacturer_keys = list(MANUFACTURERS.keys())
+        self.manufacturer_names = [MANUFACTURERS[k]["name"] for k in self.manufacturer_keys]
 
         # Hersteller
         ttk.Label(root, text="Hersteller auswählen:").pack(pady=5)
         self.manufacturer_var = tk.StringVar()
         self.manufacturer_dropdown = ttk.Combobox(
             root, textvariable=self.manufacturer_var,
-            values=list(DEVICE_DATABASE.keys()),
+            values=self.manufacturer_names,
             state="readonly", width=40
         )
         self.manufacturer_dropdown.pack(pady=5)
@@ -60,22 +52,44 @@ class DiscoveryUI:
         # Button
         ttk.Button(root, text="Discovery starten", command=self.start_discovery).pack(pady=20)
 
+    def get_key_from_name(self, name):
+        for k in self.manufacturer_keys:
+            if MANUFACTURERS[k]["name"] == name:
+                return k
+        return None
+
     def update_series(self, event=None):
-        manufacturer = self.manufacturer_var.get()
-        series_list = list(DEVICE_DATABASE[manufacturer].keys())
+        manu_name = self.manufacturer_var.get()
+
+        # Serien aus DEVICE_DATABASE
+        if manu_name in DEVICE_DATABASE:
+            series_list = list(DEVICE_DATABASE[manu_name].keys())
+        else:
+            series_list = ["Keine Serien gefunden"]
+
         self.series_dropdown["values"] = series_list
         self.series_var.set("")
 
+        # Leistung zurücksetzen
+        self.power_dropdown["values"] = []
+        self.power_var.set("")
+
     def update_power(self, event=None):
-        manufacturer = self.manufacturer_var.get()
+        manu_name = self.manufacturer_var.get()
         series = self.series_var.get()
-        power_list = DEVICE_DATABASE[manufacturer][series]
+
+        if manu_name in DEVICE_DATABASE and series in DEVICE_DATABASE[manu_name]:
+            power_list = DEVICE_DATABASE[manu_name][series]
+        else:
+            power_list = []
+
         self.power_dropdown["values"] = power_list
         self.power_var.set("")
 
     def start_discovery(self):
-        manufacturer = self.manufacturer_var.get()
+        manu_name = self.manufacturer_var.get()
         series = self.series_var.get()
         power = self.power_var.get()
 
-        self.on_start_callback(manufacturer, series, power)
+        if self.on_start_callback:
+            self.on_start_callback(manu_name, series, power)

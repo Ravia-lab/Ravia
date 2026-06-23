@@ -1,11 +1,13 @@
-ALLOWED_DOMAINS = [
-    "lg.com", "panasonic", "vaillant", "daikin", "wolf", "viessmann",
-    "mitsubishi", "stiebel", "bosch", "nibe"
-]
+def is_relevant_url(url: str, keywords: list[str]) -> bool:
+    url_lower = url.lower()
+    return any(k.lower() in url_lower for k in keywords)
 
-def is_relevant_domain(url: str) -> bool:
-    url_l = url.lower()
-    return any(domain in url_l for domain in ALLOWED_DOMAINS)
 
-def is_probably_pdf(url: str) -> bool:
-    return ".pdf" in url.lower().split("?")[0]
+def is_relevant_pdf(url: str, keywords: list[str]) -> bool:
+    url_lower = url.lower()
+    return (
+        url_lower.endswith(".pdf")
+        and any(k.lower() in url_lower for k in keywords)
+        and "manual" not in url_lower
+        and "warranty" not in url_lower
+    )
