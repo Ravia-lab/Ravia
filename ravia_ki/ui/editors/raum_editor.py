@@ -3,7 +3,9 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QListWidget, QMessageBox, QComboBox, QTextEdit
 )
 
-from rooms import load_rooms, add_room, delete_room, update_room
+from ravia_ki.data.rooms import load_rooms, add_room, update_room, delete_room
+
+
 
 
 class RoomEditor(QWidget):

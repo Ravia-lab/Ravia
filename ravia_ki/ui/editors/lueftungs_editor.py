@@ -3,7 +3,8 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QListWidget, QMessageBox
 )
 
-from rooms import load_rooms, save_rooms
+from ravia_ki.data.rooms import load_rooms
+
 
 
 class LueftungEditor(QWidget):

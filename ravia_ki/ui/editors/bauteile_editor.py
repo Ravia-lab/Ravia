@@ -3,7 +3,8 @@ from PySide6.QtWidgets import (
     QPushButton, QListWidget, QComboBox, QMessageBox
 )
 
-from rooms import load_rooms, save_rooms
+from ravia_ki.data.rooms import load_rooms
+
 
 
 class BauteileEditor(QWidget):

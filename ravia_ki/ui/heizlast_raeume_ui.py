@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 import matplotlib.pyplot as plt
 import os
 
-from din_engine import berechne_gebaeude_heizlast
+from ravia_ki.engine.din_engine import berechne_gebaeude_heizlast
 
 
 class RaumHeizlastUI(QWidget):

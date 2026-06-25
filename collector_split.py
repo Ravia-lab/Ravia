@@ -1,7 +1,7 @@
 import os
 
 OUTPUT_PREFIX = "project_dump_part_"
-MAX_SIZE = 2 * 1024 * 1024  # 2 MB pro Datei
+MAX_SIZE = 80 * 1024  # 80 KB pro Datei (Chat-sicher)
 EXTENSIONS = [".py", ".json", ".txt"]
 
 
@@ -19,6 +19,7 @@ def collect_files(root="."):
 
     for folder, _, files in os.walk(root):
         folder_header = f"\n\n=== FOLDER: {folder} ===\n"
+
         if len(buffer) + len(folder_header) > MAX_SIZE:
             write_chunk(chunks, index, buffer)
             index += 1
@@ -30,10 +31,8 @@ def collect_files(root="."):
             path = os.path.join(folder, file)
             ext = os.path.splitext(file)[1].lower()
 
-            # Python, JSON, TXT → Inhalt dumpen
             if ext in EXTENSIONS:
                 header = f"\n--- FILE: {path} ---\n"
-                content = ""
 
                 try:
                     with open(path, "r", encoding="utf-8") as f:
@@ -43,6 +42,15 @@ def collect_files(root="."):
 
                 block = header + content
 
+                if len(block) > MAX_SIZE:
+                    start = 0
+                    while start < len(block):
+                        part = block[start:start + MAX_SIZE]
+                        write_chunk(chunks, index, part)
+                        index += 1
+                        start += MAX_SIZE
+                    continue
+
                 if len(buffer) + len(block) > MAX_SIZE:
                     write_chunk(chunks, index, buffer)
                     index += 1
@@ -50,7 +58,6 @@ def collect_files(root="."):
 
                 buffer += block
 
-            # DB-Dateien → nur Name
             elif ext == ".db":
                 block = f"\n--- DATABASE FILE (name only): {path} ---\n"
 
@@ -61,7 +68,6 @@ def collect_files(root="."):
 
                 buffer += block
 
-    # letzten Chunk speichern
     if buffer:
         write_chunk(chunks, index, buffer)
 

@@ -1,4 +1,4 @@
-from rooms import load_rooms
+from ravia_ki.data.rooms import load_rooms
 
 
 def delta_t(nat: float, innen_temp: float) -> float:
@@ -8,7 +8,6 @@ def delta_t(nat: float, innen_temp: float) -> float:
 def q_transmission(flaeche: float, u: float, dt: float) -> float:
     """Transmission: Q_T = A * U * ΔT (W)"""
     return flaeche * u * dt
-
 
 
 def q_lueftung(n: float, volumen: float, dt: float) -> float:
@@ -40,7 +39,6 @@ def berechne_raum_heizlast(raum: dict, nat: float) -> dict:
         else:
             fla = float(b["flaeche"])
             u = float(b["u"])
-            # hier könnte man je nach Randbed. noch differenzieren
             q_t += q_transmission(fla, u, dt)
 
     lueftung = raum.get("lueftung", {"n": 0.6})
