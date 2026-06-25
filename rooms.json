@@ -1,0 +1,92 @@
+[
+    {
+        "name": "1",
+        "flaeche": 20.0,
+        "hoehe": 2.0,
+        "temp": 18.0,
+        "nutzung": "Schlafzimmer",
+        "norm_temp": 18.0,
+        "beschreibung": "",
+        "aussenwaende": [],
+        "fenster": [],
+        "dach": [],
+        "boden": [],
+        "waermebruecken": [],
+        "lueftung": {
+            "typ": "Fensterlüftung",
+            "n": 0.6
+        }
+    },
+    {
+        "name": "2",
+        "flaeche": 60.0,
+        "hoehe": 2.0,
+        "temp": 20.0,
+        "nutzung": "Wohnraum",
+        "norm_temp": 20.0,
+        "beschreibung": "",
+        "aussenwaende": [],
+        "fenster": [],
+        "dach": [],
+        "boden": [],
+        "waermebruecken": [],
+        "lueftung": {
+            "typ": "Fensterlüftung",
+            "n": 0.6
+        }
+    },
+    {
+        "name": "3",
+        "flaeche": 15.0,
+        "hoehe": 2.0,
+        "temp": 18.0,
+        "nutzung": "Schlafzimmer",
+        "norm_temp": 18.0,
+        "beschreibung": "",
+        "aussenwaende": [],
+        "fenster": [],
+        "dach": [],
+        "boden": [],
+        "waermebruecken": [],
+        "lueftung": {
+            "typ": "Fensterlüftung",
+            "n": 0.6
+        }
+    },
+    {
+        "name": "4",
+        "flaeche": 15.0,
+        "hoehe": 2.0,
+        "temp": 24.0,
+        "nutzung": "Bad",
+        "norm_temp": 24.0,
+        "beschreibung": "",
+        "aussenwaende": [],
+        "fenster": [],
+        "dach": [],
+        "boden": [],
+        "waermebruecken": [],
+        "lueftung": {
+            "typ": "Fensterlüftung",
+            "n": 0.6
+        }
+    },
+    {
+        "name": "5",
+        "flaeche": 15.0,
+        "hoehe": 2.0,
+        "temp": 20.0,
+        "nutzung": "Küche",
+        "norm_temp": 20.0,
+        "beschreibung": "",
+        "aussenwaende": [],
+        "fenster": [],
+        "dach": [],
+        "boden": [],
+        "waermebruecken": [],
+        "lueftung": {
+            "typ": "Fensterlüftung",
+            "n": 0.6
+        }
+    }
+]
