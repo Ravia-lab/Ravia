@@ -1,181 +1,113 @@
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QListWidget, QMessageBox, QComboBox, QTextEdit
+    QWidget, QLabel, QLineEdit, QPushButton,
+    QVBoxLayout, QHBoxLayout, QScrollArea
 )
-
-from ravia_ki.data.rooms import load_rooms, add_room, update_room, delete_room
-
-
+from ravia_ki.data.rooms import load_rooms, save_rooms
 
 
 class RoomEditor(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RaVia – Räume verwalten (DIN‑PRO)")
 
-        layout = QVBoxLayout(self)
+        self.setWindowTitle("Räume verwalten")
+        self.resize(500, 600)
 
-        # Raumliste
-        self.list = QListWidget()
-        self.list.itemSelectionChanged.connect(self.load_selected_room)
-        layout.addWidget(self.list)
-
-        # Eingabefelder
-        form = QVBoxLayout()
-        layout.addLayout(form)
-
-        # Name
-        self.name = QLineEdit()
-        self.name.setPlaceholderText("Raumname")
-        form.addWidget(self._label("Raumname"))
-        form.addWidget(self.name)
-
-        # Fläche
-        self.flaeche = QLineEdit()
-        self.flaeche.setPlaceholderText("Fläche m²")
-        form.addWidget(self._label("Fläche (m²)"))
-        form.addWidget(self.flaeche)
-
-        # Höhe
-        self.hoehe = QLineEdit()
-        self.hoehe.setPlaceholderText("Höhe m")
-        form.addWidget(self._label("Raumhöhe (m)"))
-        form.addWidget(self.hoehe)
-
-        # Nutzung
-        self.nutzung = QComboBox()
-        self.nutzung.addItems([
-            "Wohnraum", "Schlafzimmer", "Bad", "Küche",
-            "Flur", "Abstellraum", "Technikraum"
-        ])
-        self.nutzung.currentIndexChanged.connect(self.update_norm_temp)
-        form.addWidget(self._label("Nutzung"))
-        form.addWidget(self.nutzung)
-
-        # Normtemperatur
-        self.norm_temp = QLineEdit()
-        self.norm_temp.setPlaceholderText("Normtemperatur °C")
-        form.addWidget(self._label("Normtemperatur (DIN)"))
-        form.addWidget(self.norm_temp)
-
-        # Beschreibung
-        self.beschreibung = QTextEdit()
-        self.beschreibung.setPlaceholderText("Beschreibung / Hinweise")
-        form.addWidget(self._label("Beschreibung"))
-        form.addWidget(self.beschreibung)
-
-        # Buttons
-        btn_add = QPushButton("Raum speichern / aktualisieren")
-        btn_add.clicked.connect(self.save_room)
-        layout.addWidget(btn_add)
-
-        btn_del = QPushButton("Raum löschen")
-        btn_del.clicked.connect(self.delete_room_clicked)
-        layout.addWidget(btn_del)
-
-        self.load_rooms_into_list()
-
-    # ---------------------------------------------------------
-    # Hilfslabel
-    # ---------------------------------------------------------
-    def _label(self, text):
-        lbl = QLabel(text)
-        return lbl
-
-    # ---------------------------------------------------------
-    # Räume laden
-    # ---------------------------------------------------------
-    def load_rooms_into_list(self):
         self.rooms = load_rooms()
-        self.list.clear()
-        for r in self.rooms:
-            self.list.addItem(f"{r['name']} – {r['flaeche']} m²")
 
-    # ---------------------------------------------------------
-    # Raum speichern / aktualisieren
-    # ---------------------------------------------------------
-    def save_room(self):
+        main_layout = QVBoxLayout(self)
+
+        # Anzahl der Räume
+        count_layout = QHBoxLayout()
+        count_layout.addWidget(QLabel("Anzahl Räume:"))
+        self.count_input = QLineEdit()
+        count_layout.addWidget(self.count_input)
+
+        self.generate_btn = QPushButton("Eingabefelder erzeugen")
+        self.generate_btn.clicked.connect(self.generate_fields)
+
+        main_layout.addLayout(count_layout)
+        main_layout.addWidget(self.generate_btn)
+
+        # Scrollbereich für dynamische Felder
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll_widget = QWidget()
+        self.scroll_layout = QVBoxLayout(self.scroll_widget)
+        self.scroll.setWidget(self.scroll_widget)
+
+        main_layout.addWidget(self.scroll)
+
+        # Speichern
+        self.save_btn = QPushButton("Räume speichern")
+        self.save_btn.clicked.connect(self.save_rooms)
+        main_layout.addWidget(self.save_btn)
+
+        # Wenn Räume existieren → anzeigen
+        if self.rooms:
+            self.generate_fields_from_existing()
+
+    def generate_fields(self):
+        """Erzeugt Eingabefelder basierend auf der Anzahl."""
         try:
-            name = self.name.text().strip()
-            flaeche = float(self.flaeche.text().replace(",", "."))
-            hoehe = float(self.hoehe.text().replace(",", "."))
-            norm_temp = float(self.norm_temp.text().replace(",", "."))
-        except ValueError:
-            QMessageBox.warning(self, "Fehler", "Bitte alle Werte korrekt eingeben.")
+            count = int(self.count_input.text())
+        except:
             return
 
-        if not name:
-            QMessageBox.warning(self, "Fehler", "Bitte einen Raumnamen eingeben.")
-            return
+        # Alte Felder löschen
+        for i in reversed(range(self.scroll_layout.count())):
+            widget = self.scroll_layout.itemAt(i).widget()
+            if widget:
+                widget.deleteLater()
 
-        room = {
-            "name": name,
-            "flaeche": flaeche,
-            "hoehe": hoehe,
-            "temp": norm_temp,
-            "nutzung": self.nutzung.currentText(),
-            "norm_temp": norm_temp,
-            "beschreibung": self.beschreibung.toPlainText(),
-            "aussenwaende": [],
-            "fenster": [],
-            "dach": [],
-            "boden": [],
-            "waermebruecken": [],
-            "lueftung": {"typ": "Fensterlüftung", "n": 0.6}
-        }
+        self.room_fields = []
 
-        # Prüfen ob Raum existiert → update
-        selected = self.list.currentRow()
-        if selected >= 0:
-            old_name = self.rooms[selected]["name"]
-            update_room(old_name, room)
-        else:
-            add_room(room)
+        for i in range(count):
+            row = QHBoxLayout()
+            name = QLineEdit()
+            name.setPlaceholderText(f"Raum {i+1} Name")
 
-        self.load_rooms_into_list()
+            area = QLineEdit()
+            area.setPlaceholderText("Fläche (m²)")
 
-    # ---------------------------------------------------------
-    # Raum löschen
-    # ---------------------------------------------------------
-    def delete_room_clicked(self):
-        item = self.list.currentItem()
-        if not item:
-            return
-        name = item.text().split("–")[0].strip()
-        delete_room(name)
-        self.load_rooms_into_list()
+            height = QLineEdit()
+            height.setPlaceholderText("Höhe (m)")
 
-    # ---------------------------------------------------------
-    # Raum laden
-    # ---------------------------------------------------------
-    def load_selected_room(self):
-        idx = self.list.currentRow()
-        if idx < 0:
-            return
+            row.addWidget(name)
+            row.addWidget(area)
+            row.addWidget(height)
 
-        r = self.rooms[idx]
+            self.scroll_layout.addLayout(row)
+            self.room_fields.append((name, area, height))
 
-        self.name.setText(r["name"])
-        self.flaeche.setText(str(r["flaeche"]))
-        self.hoehe.setText(str(r["hoehe"]))
-        self.nutzung.setCurrentText(r.get("nutzung", "Wohnraum"))
-        self.norm_temp.setText(str(r.get("norm_temp", 20)))
-        self.beschreibung.setText(r.get("beschreibung", ""))
+    def generate_fields_from_existing(self):
+        """Erzeugt Felder aus gespeicherten Räumen."""
+        self.room_fields = []
 
-    # ---------------------------------------------------------
-    # Normtemperatur automatisch setzen
-    # ---------------------------------------------------------
-    def update_norm_temp(self):
-        nutzung = self.nutzung.currentText()
+        for r in self.rooms:
+            row = QHBoxLayout()
 
-        defaults = {
-            "Wohnraum": 20,
-            "Schlafzimmer": 18,
-            "Bad": 24,
-            "Küche": 20,
-            "Flur": 15,
-            "Abstellraum": 12,
-            "Technikraum": 10
-        }
+            name = QLineEdit(r.get("name", ""))
+            area = QLineEdit(str(r.get("area", "")))
+            height = QLineEdit(str(r.get("height", "")))
 
-        self.norm_temp.setText(str(defaults.get(nutzung, 20)))
+            row.addWidget(name)
+            row.addWidget(area)
+            row.addWidget(height)
+
+            self.scroll_layout.addLayout(row)
+            self.room_fields.append((name, area, height))
+
+    def save_rooms(self):
+        """Speichert alle Räume."""
+        rooms = []
+
+        for name, area, height in self.room_fields:
+            if name.text().strip():
+                rooms.append({
+                    "name": name.text(),
+                    "area": float(area.text() or 0),
+                    "height": float(height.text() or 0)
+                })
+
+        save_rooms(rooms)
+        self.close()

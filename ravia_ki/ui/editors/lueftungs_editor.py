@@ -1,3 +1,5 @@
+from ravia_ki.data.rooms import save_rooms, load_rooms
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QLineEdit, QPushButton, QListWidget, QMessageBox

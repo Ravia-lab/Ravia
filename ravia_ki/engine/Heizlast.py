@@ -1,3 +1,166 @@
+import sqlite3
+
+# ============================================================
+# PLZ-Datenbank-Zugriff
+# ============================================================
+
+DB_FILE = r"C:\Users\User\PycharmProjects\Ravia2\downloads\plz-heizlast\plz.db"
+
+def get_plz_info(plz: int):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    row = cur.execute(
+        "SELECT plz, bundesland, kreis, typ FROM plz WHERE plz = ?",
+        (str(plz),)
+    ).fetchone()
+
+    conn.close()
+
+    if not row:
+        raise ValueError(f"PLZ {plz} nicht in plz.db gefunden.")
+
+    return {
+        "plz": row[0],
+        "bundesland": row[1],
+        "kreis": row[2],
+        "typ": row[3],
+    }
+
+# ============================================================
+# NAT-Zonen nach Bundesland + Auslegungstemperaturen
+# ============================================================
+
+NAT_ZONES = {
+    "Sachsen": 2,
+    "Thüringen": 2,
+    "Bayern": 2,
+    "Baden-Württemberg": 3,
+    "Hessen": 3,
+    "Rheinland-Pfalz": 3,
+    "Saarland": 3,
+    "Sachsen-Anhalt": 3,
+    "Niedersachsen": 4,
+    "NRW": 4,
+    "Nordrhein-Westfalen": 4,
+    "Berlin": 4,
+    "Brandenburg": 4,
+    "Hamburg": 5,
+    "Bremen": 5,
+    "Schleswig-Holstein": 5
+}
+
+AUSLEGUNG = {
+    1: -16,
+    2: -14,
+    3: -12,
+    4: -10,
+    5: -8,
+    6: -6
+}
+
+def nat_aus_bundesland(bundesland: str) -> int:
+    return NAT_ZONES.get(bundesland, 4)
+
+def auslegung_temp(nat_zone: int) -> float:
+    return AUSLEGUNG[nat_zone]
+
+# ============================================================
+# RaVia – Heizlast nach vereinfachter DIN EN 12831
+# ============================================================
+
+# Q_T = A * U * (θ_i - θ_e)
+# Q_V = 0.34 * n * V * (θ_i - θ_e)
+# Q_H = (Q_T + Q_V) / 1000  → kW
+# ============================================================
+
+def u_wert_aus_baujahr(baujahr: int) -> float:
+    if baujahr < 1978:
+        return 1.6
+    elif baujahr < 1995:
+        return 1.3
+    elif baujahr < 2005:
+        return 1.0
+    else:
+        return 0.8
+
+def luftwechsel_vereinfacht(daemmung_stufe: int) -> float:
+    # 1 = schlecht, 2 = mittel, 3 = gut
+    if daemmung_stufe <= 1:
+        return 0.7
+    elif daemmung_stufe == 2:
+        return 0.6
+    else:
+        return 0.5
+
+def warmwasser_leistung(personen: int) -> float:
+    if personen <= 0:
+        return 0.0
+    return personen * 0.25  # kW
+
+def puffer_verluste(puffer_liter: int) -> float:
+    if puffer_liter <= 0:
+        return 0.0
+    return round(puffer_liter * 0.02 / 100.0, 2)
+
+def berechne_heizlast_din(
+    plz: int,
+    flaeche: float,
+    raumhoehe: float,
+    baujahr: int,
+    daemmung_stufe: int,
+    personen: int,
+    puffer_liter: int,
+    theta_i: float = 20.0,
+):
+    """
+    Vereinfachte Heizlast nach DIN EN 12831 (Gebäudeebene),
+    jetzt mit PLZ-Datenbank + NAT-Zone aus Bundesland.
+    """
+
+    plz_info = get_plz_info(plz)
+    bundesland = plz_info["bundesland"]
+
+    nat_zone = nat_aus_bundesland(bundesland)
+    nat = auslegung_temp(nat_zone)
+
+    delta_t = theta_i - nat
+
+    u_gesamt = u_wert_aus_baujahr(baujahr)
+    volumen = flaeche * raumhoehe
+
+    # Transmission
+    q_t = flaeche * u_gesamt * delta_t  # W
+
+    # Lüftung
+    n = luftwechsel_vereinfacht(daemmung_stufe)
+    q_v = 0.34 * n * volumen * delta_t  # W
+
+    # Heizlast Gebäude
+    q_h = (q_t + q_v) / 1000.0  # kW
+
+    # Warmwasser + Puffer
+    q_ww = warmwasser_leistung(personen)
+    q_puffer = puffer_verluste(puffer_liter)
+
+    gesamt = q_h + q_ww + q_puffer
+
+    return {
+        "plz": plz,
+        "bundesland": bundesland,
+        "nat_zone": nat_zone,
+        "nat": nat,
+        "delta_t": delta_t,
+        "u_gesamt": round(u_gesamt, 3),
+        "luftwechsel": n,
+        "q_t": round(q_t, 1),
+        "q_v": round(q_v, 1),
+        "heizlast_geb": round(q_h, 2),
+        "warmwasser": round(q_ww, 2),
+        "puffer": round(q_puffer, 2),
+        "gesamt": round(gesamt, 2),
+    }
+
 class Heizlast:
     """
     Heizlast-Engine nach vereinfachter DIN EN 12831.
@@ -29,115 +192,18 @@ class Heizlast:
             theta_i,
         )
 
+# kleiner Test
 
-# ============================================================
-# RaVia – Heizlast nach vereinfachter DIN EN 12831
-# ============================================================
-
-# Q_T = A * U * (θ_i - θ_e)
-# Q_V = 0.34 * n * V * (θ_i - θ_e)
-# Q_H = (Q_T + Q_V) / 1000  → kW
-# ============================================================
-
-NAT_TABELLE = {
-    "0": -12,
-    "1": -12,
-    "2": -10,
-    "3": -12,
-    "4": -10,
-    "5": -10,
-    "6": -14,
-    "7": -14,
-    "8": -16,
-    "9": -16,
-}
-
-
-def nat_aus_plz(plz: int) -> int:
-    plz_str = str(plz)
-    if not plz_str:
-        return -12
-    return NAT_TABELLE.get(plz_str[0], -12)
-
-
-def u_wert_aus_baujahr(baujahr: int) -> float:
-    if baujahr < 1978:
-        return 1.6
-    elif baujahr < 1995:
-        return 1.3
-    elif baujahr < 2005:
-        return 1.0
-    else:
-        return 0.8
-
-
-def luftwechsel_vereinfacht(daemmung_stufe: int) -> float:
-    # 1 = schlecht, 2 = mittel, 3 = gut
-    if daemmung_stufe <= 1:
-        return 0.7
-    elif daemmung_stufe == 2:
-        return 0.6
-    else:
-        return 0.5
-
-
-def warmwasser_leistung(personen: int) -> float:
-    if personen <= 0:
-        return 0.0
-    return personen * 0.25  # kW
-
-
-def puffer_verluste(puffer_liter: int) -> float:
-    if puffer_liter <= 0:
-        return 0.0
-    return round(puffer_liter * 0.02 / 100.0, 2)
-
-
-def berechne_heizlast_din(
-    plz: int,
-    flaeche: float,
-    raumhoehe: float,
-    baujahr: int,
-    daemmung_stufe: int,
-    personen: int,
-    puffer_liter: int,
-    theta_i: float = 20.0,
-):
-    """
-    Vereinfachte Heizlast nach DIN EN 12831 (Gebäudeebene).
-    """
-
-    nat = nat_aus_plz(plz)
-    delta_t = theta_i - nat
-
-    u_gesamt = u_wert_aus_baujahr(baujahr)
-    volumen = flaeche * raumhoehe
-
-    # Transmission
-    q_t = flaeche * u_gesamt * delta_t  # W
-
-    # Lüftung
-    n = luftwechsel_vereinfacht(daemmung_stufe)
-    q_v = 0.34 * n * volumen * delta_t  # W
-
-    # Heizlast Gebäude
-    q_h = (q_t + q_v) / 1000.0  # kW
-
-    # Warmwasser + Puffer
-    q_ww = warmwasser_leistung(personen)
-    q_puffer = puffer_verluste(puffer_liter)
-
-    gesamt = q_h + q_ww + q_puffer
-
-    return {
-        "nat": nat,
-        "delta_t": delta_t,
-        "u_gesamt": round(u_gesamt, 3),
-        "luftwechsel": n,
-        "q_t": round(q_t, 1),
-        "q_v": round(q_v, 1),
-        "heizlast_geb": round(q_h, 2),
-        "warmwasser": round(q_ww, 2),
-        "puffer": round(q_puffer, 2),
-        "gesamt": round(gesamt, 2),
-    }
+if __name__ == "__main__":
+    hl = Heizlast()
+    result = hl.berechnen(
+        plz=1097,
+        flaeche=120.0,
+        raumhoehe=2.5,
+        baujahr=1990,
+        daemmung_stufe=2,
+        personen=3,
+        puffer_liter=200,
+        theta_i=20.0,
+    )
+    print(result)
