@@ -1,3 +1,37 @@
+import os
+import requests
+
+
+class PDFDownloader:
+    """
+    Minimaler PDF-Downloader für RaVia.
+    Lädt eine PDF-Datei herunter und speichert sie lokal.
+    """
+
+    def __init__(self, download_dir="downloads"):
+        self.download_dir = download_dir
+        os.makedirs(self.download_dir, exist_ok=True)
+
+    def download(self, url: str) -> str | None:
+        """
+        Lädt eine PDF herunter und gibt den lokalen Pfad zurück.
+        """
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code != 200:
+                return None
+
+            filename = url.split("/")[-1]
+            local_path = os.path.join(self.download_dir, filename)
+
+            with open(local_path, "wb") as f:
+                f.write(response.content)
+
+            return local_path
+
+        except Exception:
+            return None
+
 import logging
 import requests
 from pathlib import Path

@@ -1,3 +1,35 @@
+class Heizlast:
+    """
+    Heizlast-Engine nach vereinfachter DIN EN 12831.
+    Kapselt alle Funktionen in einer sauberen Klasse.
+    """
+
+    def __init__(self):
+        pass
+
+    def berechnen(
+        self,
+        plz: int,
+        flaeche: float,
+        raumhoehe: float,
+        baujahr: int,
+        daemmung_stufe: int,
+        personen: int,
+        puffer_liter: int,
+        theta_i: float = 20.0,
+    ):
+        return berechne_heizlast_din(
+            plz,
+            flaeche,
+            raumhoehe,
+            baujahr,
+            daemmung_stufe,
+            personen,
+            puffer_liter,
+            theta_i,
+        )
+
+
 # ============================================================
 # RaVia – Heizlast nach vereinfachter DIN EN 12831
 # ============================================================

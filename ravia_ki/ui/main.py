@@ -2,7 +2,7 @@ import sys
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
 
-from ravia_ki.ui.dashboard.dashboard import RaViaDashboard
+from ravia_ki.ui.dashboard import RaViaDashboard
 from ravia_ki.utils.icons import get_best_icon_path
 
 
